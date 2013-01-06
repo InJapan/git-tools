@@ -1,0 +1,73 @@
+#!/usr/bin/php
+<?php
+/**
+ * PHP linter server-side Git hook
+ * @author InJapan Corp. <max@injapan.ru>
+ *
+ ************************************************************************ 
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+  define("PHP_BIN", "/usr/bin/php");
+
+  $inp = file('php://stdin');
+  $result = true;
+  foreach($inp as $line) {
+    list($oldrev, $newrev, $refname) = explode(' ', trim($line));
+    $result = $result && validate($oldrev, $newrev, $refname);
+  }
+
+  if (!$result) echo "Push forbidden due to the syntax check.\n";
+              
+  exit($result ? 0 : 1);
+
+  function validate($oldrev, $newrev, $refname) {
+    //enforce rules only for master & develop branches
+    if (!preg_match('#^refs/heads/(master|develop)$#', $refname, $matches))
+      return true;
+
+    $branch = $matches[1];
+    $out = array();
+    //get files changed in that push
+    exec("git diff --name-status $oldrev $newrev", $out);
+    foreach($out as $line) {
+      if (preg_match('/^(\w)\s*(.*\.php)$/', trim($line), $matches)) {
+        switch($matches[1]) {
+          case 'D':
+            //no checking for deleted files
+            break;
+
+          default:
+            $lint   = array();
+            $status = 0;
+
+            //parse symbolic name into SHA-1 id of the file-blob
+            $objectid = trim(`git rev-parse {$newrev}:{$matches[2]}`);
+
+            //feed the blob into PHP linter
+            exec("git cat-file blob $objectid |" . PHP_BIN . " -l 2>&1", $lint, $status);
+            if ($status > 0) {
+              array_pop($lint);
+
+              echo "[{$branch}] {$matches[2]}: " . implode(" ", $lint) . "\n";
+              return false;
+            }
+            break;
+        }
+      }
+    }
+
+    return true;
+  }
