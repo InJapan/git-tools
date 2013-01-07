@@ -38,6 +38,10 @@
     if (!preg_match('#^refs/heads/(master|develop)$#', $refname, $matches))
       return true;
 
+    $oldrev = escapeshellarg($oldrev);
+    $newrev = escapeshellarg($newrev);
+
+
     $branch = $matches[1];
     $out = array();
     //get files changed in that push
@@ -53,15 +57,17 @@
             $lint   = array();
             $status = 0;
 
+            $path = escapeshellarg($matches[2]);
+
             //parse symbolic name into SHA-1 id of the file-blob
-            $objectid = trim(`git rev-parse {$newrev}:{$matches[2]}`);
+            $objectid = trim(`git rev-parse {$newrev}:{$path}`);
 
             //feed the blob into PHP linter
             exec("git cat-file blob $objectid |" . PHP_BIN . " -l 2>&1", $lint, $status);
             if ($status > 0) {
               array_pop($lint);
 
-              echo "[{$branch}] {$matches[2]}: " . implode(" ", $lint) . "\n";
+              echo "[{$branch}] {$path}: " . implode(" ", $lint) . "\n";
               return false;
             }
             break;
